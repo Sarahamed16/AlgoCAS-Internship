@@ -1,0 +1,106 @@
+Transform: AWS::Serverless-2016-10-31
+Resources:
+  StateMachine41259047:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Definition:
+        Comment: 'ETL Pipeline: S3 Ingestion -> Glue Transform & Load -> DWH'
+        StartAt: ReadS3
+        States:
+          ReadS3:
+            Type: Task
+            Resource: ${InvokeFunction_Resource_8bd30602}
+            Next: ETL Job
+          ETL Job:
+            Type: Task
+            Resource: arn:aws:states:::glue:startJobRun.sync
+            Parameters:
+              JobName: ${gluestartJobRun_JobName_269f948b}
+            Next: Success
+            Catch:
+              - ErrorEquals:
+                  - States.All
+                Next: ETL_Failed
+          Success:
+            Type: Succeed
+          ETL_Failed:
+            Type: Fail
+            Cause: One of the ETL steps failed.
+            Error: ETLFailure
+      DefinitionSubstitutions:
+        InvokeFunction_Resource_8bd30602: arn:aws:lambda:us-east-1:484907516017:function:ReadS3
+        gluestartJobRun_JobName_269f948b: Fatalities_ETL
+      Name: StateMachine41259047
+      Type: STANDARD
+      Role:
+        Fn::GetAtt:
+          - Role58487623
+          - Arn
+      Logging:
+        Level: 'OFF'
+        IncludeExecutionData: false
+  Role58487623:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: StepFunctions_IAM_ROLE_FatalitiesPipeline3d305984
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      MaxSessionDuration: 3600
+  Policyefc02e9f:
+    Type: AWS::IAM::RolePolicy
+    Properties:
+      PolicyName: GlueJobRunManagementFullAccessPolicy337e0187
+      RoleName:
+        Ref: Role58487623
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - glue:StartJobRun
+              - glue:GetJobRun
+              - glue:GetJobRuns
+              - glue:BatchStopJobRun
+            Effect: Allow
+            Resource:
+              - '*'
+  Policyf408e758:
+    Type: AWS::IAM::RolePolicy
+    Properties:
+      PolicyName: LambdaInvokeScopedAccessPolicyc197fe56
+      RoleName:
+        Ref: Role58487623
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource:
+              - arn:aws:lambda:us-east-1:484907516017:function:ReadS3:*
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource:
+              - arn:aws:lambda:us-east-1:484907516017:function:ReadS3
+  Policyb108c7a7:
+    Type: AWS::IAM::RolePolicy
+    Properties:
+      PolicyName: XRayAccessPolicy1251a29a
+      RoleName:
+        Ref: Role58487623
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - xray:PutTraceSegments
+              - xray:PutTelemetryRecords
+              - xray:GetSamplingRules
+              - xray:GetSamplingTargets
+            Resource:
+              - '*'

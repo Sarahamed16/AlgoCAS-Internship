@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "0.3",
+  "description": "This runbook is the definitive guide for executing the data ingestion and processing workflow. It is designed to automatically trigger a series of actions, including running a Python ingestion script and invoking an AWS Lambda function, before initiating the AWS Step Functions state machine to manage the multi-step ETL process. This workflow ensures that raw data is consistently and reliably prepared for the data warehouse.",
+  "assumeRole": "arn:aws:iam::484907516017:role/AWSGlueServiceRole_socialmedia",
+  "files": {
+    "Fatalities-Isr-Pse-Conflict-2000-2023.csv": {
+      "checksums": {
+        "sha256": "b30c16078e10263960529c81b5745edb9714980d06a39828a52144cc144aa09a"
+      }
+    }
+  },
+  "mainSteps": [
+    {
+      "description": "This IAM policy defines the complete set of permissions required for all roles and services within the project's scope. It serves as a foundational policy from which more granular, least-privilege policies can be derived and attached to specific identities as needed.",
+      "name": "IAMPolicy",
+      "action": "aws:executeAwsApi",
+      "nextStep": "DataIngestion",
+      "isEnd": false,
+      "inputs": {
+        "PolicyArn": "arn:aws:iam::484907516017:role/AWSGlueServiceRole_socialmedia",
+        "Service": "iam",
+        "Api": "AttachRolePolicy"
+      }
+    },
+    {
+      "description": "This Python script moves data directly from a local terminal to an Amazon S3 bucket. It's a temporary, lightweight alternative to AWS DataSync, eliminating the need for a separate container image. Using the boto3 library, it offers a secure and simple solution for one-off data migrations.",
+      "name": "DataIngestion",
+      "action": "aws:executeScript",
+      "nextStep": "ExtractFile",
+      "isEnd": false,
+      "inputs": {
+        "Runtime": "python3.11",
+        "Handler": "script_handler",
+        "Script": "import boto3\n\naws_access_key_id = 'ASIAXBZV5QBYRNBUG22A'\naws_secret_access_key = '8NH+XupsKSM+NZ8tHgblKSsuGu5k+r/dfjbXWmdL'\naws_session_token = 'IQoJb3JpZ2luX2VjEB8aCXVzLWVhc3QtMSJGMEQCIE5OFIAbxC5kRjkpevFSN3P6AU38aB2702nNa5ZbDm24AiATL4H+1qJ1NMzSgtueBSoHQzMvrULkOyQeMBVcV8w62CrzAgh4EAAaDDQ4NDkwNzUxNjAxNyIM27sRssNk056+xDQIKtAC/Jq+N8VhxsZ2kFBtDxRYph/S6DlEgasC6249ruW6m8PJx8s1GgvNX91ebd0Rym1VJzZF6BUBzpxNgJXpVS0LGjJPOpK819A/yFCoegcyrVg4T4fg/5XeexMabAeP3K7c34FrYUcoASPJu9/xpPL3bXu8RO0xmzCARIvmcC4fJGMSvcZ6hZ55oeHIDmb+gH8TF04DpxrRfLr0hqXyvSeKgk73ukd6pfOu/Aak/G7KoiIqFPpP+tHa1ofiCEE3es6JleFmH/E5easTvZxuswjfDb930qvC+mPb22XOVTwUl1Nf3CtOczNiynO7lY2/3PzBlj865KSJpq12uf3M0aKSL41rKNNvaiQ70+Z0i4zoPsry7jKWv3LcMGVPRv+ZBqXEw9M0NazMck7GTMy99GJ4bNvZObanRNlrjMEt64js7QBEeJTzGJ+lxx/+ElrDtJ44MPWGt8UGOqgB14nSlpp+KKjeq/L3YhpUPKpvbWe/dZYFWMBvYxewjvCcTJNGMoKAXCwHgr335FjNkfclY19qHGW0PVKVtlEKGMKGUZzycGpBcIkEuM2R+1L/ayRUUgVeCGyjvekiIH0qQWlwxUrWQhqq4r6Gnt+i4S4sITY1a7+uVkxi21O7AnAZxCO3QseVi/Fh+3TwavEM9IBOe9FZtjAdJ6wTn7gRc2+vyxHJWUSy'\n\n# Create an S3 client with temporary credentials\ns3_client = boto3.client(\n    's3',\n    aws_access_key_id=aws_access_key_id,\n    aws_secret_access_key=aws_secret_access_key,\n    aws_session_token=aws_session_token,\n    region_name='us-east-1' \n)\n\n# Define upload details\nbucket_name = 'sarasocialmediabucket'       \nlocal_file_path = 'P:\\Career\\Data Engineering\\ALGOcas\\Tasks\\Week 9\\Task 1\\Fatalities Isr-Pse Conflict 2000-2023.csv'\ns3_key = 'Final-Project/Fatalities Isr-Pse Conflict 2000-2023.csv'          \n\n# Upload to S3\ntry:\n    s3_client.upload_file(local_file_path, bucket_name, s3_key)\n    print(f\"File uploaded to s3://{bucket_name}/{s3_key}\")\nexcept Exception as e:\n    print(f\"Upload failed: {e}\")",
+        "Attachment": "Fatalities-Isr-Pse-Conflict-2000-2023.csv"
+      }
+    },
+    {
+      "description": "This AWS Lambda function automates the extraction of CSV files from an S3 bucket. Upon file upload, the function is triggered to prepare the data for subsequent transformation stages, ensuring a seamless data ingestion pipeline.",
+      "name": "ExtractFile",
+      "action": "aws:invokeLambdaFunction",
+      "nextStep": "ETL",
+      "isEnd": false,
+      "inputs": {
+        "InvocationType": "RequestResponse",
+        "FunctionName": "arn:aws:lambda:us-east-1:484907516017:function:ReadS3"
+      }
+    },
+    {
+      "description": "This AWS Step Functions state machine orchestrates the transformation and loading phases of the data pipeline. Triggered by the upstream Lambda function, it manages a series of steps to clean, normalize, and enrich the data before loading it into the data warehouse (DWH). This workflow provides robust error handling and clear visibility into the end-to-end process.",
+      "name": "ETL",
+      "action": "aws:executeStateMachine",
+      "nextStep": "PutMetricData",
+      "isEnd": false,
+      "inputs": {
+        "stateMachineArn": "arn:aws:states:us-east-1:484907516017:stateMachine:FatalitiesPipeline"
+      }
+    },
+    {
+      "description": "Amazon CloudWatch as the primary monitoring and alerting tool to ensure the health and performance of the data pipeline. CloudWatch alarms are configured to watch for specific metrics, and when a threshold is breached, an event is sent to Amazon SNS. ",
+      "name": "PutMetricData",
+      "action": "aws:executeAwsApi",
+      "nextStep": "Publish",
+      "isEnd": false,
+      "inputs": {
+        "Service": "cloudwatch",
+        "Api": "PutMetricData",
+        "Namespace": "{{ ETL.executionArn }}"
+      }
+    },
+    {
+      "description": "The SNS service then reliably delivers these notifications to a designated topic, ensuring that the right team members are immediately alerted to any issues.",
+      "name": "Publish",
+      "action": "aws:executeAwsApi",
+      "isEnd": true,
+      "inputs": {
+        "Message": "{{ ETL.executionArn }}",
+        "Service": "sns",
+        "Api": "Publish"
+      }
+    }
+  ]
+}
